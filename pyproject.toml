@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "dave-copilot-geppetto-based"
+version = "0.1.0"
+description = ""
+authors = ["davide losio <losio@spaziodati.eu>"]
+packages = [{include = "code_assistant"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+openai = "^1.58.1"
+faiss-cpu = "^1.9.0.post1"
+tiktoken = "^0.8.0"
+python-dotenv = "^1.0.1"
+tqdm = "^4.67.1"
+streamlit = "^1.41.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+codebase_assistant = 'code_assistant.main:main'
