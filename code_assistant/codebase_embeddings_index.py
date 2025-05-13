@@ -9,11 +9,20 @@ import ast
 
 class codebaseIndex:
     basic_extensions = [".py", ".java", ".scala", ".yml", ".properties"]
+
     def __init__(self,
                  directory=".",
                  added_extension=None,
                  embedding_model="text-embedding-ada-002"
                  ):
+        """
+        Initialize the codebaseIndex with a directory to index and optional configurations.
+
+        Args:
+            directory (str): The root directory of the codebase to index (default: current directory).
+            added_extension (list): Additional file extensions to include (default: None).
+            embedding_model (str): The OpenAI embedding model to use (default: "text-embedding-ada-002").
+        """
         if not added_extension:
             added_extension = []
         # Store directory and extensions as instance variables
@@ -45,10 +54,22 @@ class codebaseIndex:
 
     @staticmethod
     def load_codebase(directory, extensions=None, exclude_dirs=None):
+        """
+        Recursively load all code files from the specified directory with given extensions.
+
+        Args:
+            directory (str): The directory to scan for code files.
+            extensions (list): File extensions to include (e.g., ['.py', '.java']). If None, include all files.
+            exclude_dirs (list): Directories to exclude from scanning (e.g., ['.venv', '.git']).
+
+        Returns:
+            list: A list of tuples, each containing (filepath, code_content).
+        """
         if exclude_dirs is None:
             exclude_dirs = ['.venv', '.git', '__pycache__']
         code_files = []
         for root, dirs, files in os.walk(directory):
+            # Skip the excluded directories
             dirs[:] = [d for d in dirs if d not in exclude_dirs]
             for file in files:
                 if extensions and not file.endswith(tuple(extensions)):
@@ -64,6 +85,18 @@ class codebaseIndex:
 
     @staticmethod
     def chunk_text(text, filepath, max_tokens=8000, model="text-embedding-ada-002"):
+        """
+        Split the given text into chunks suitable for embedding, with special handling for Python files.
+
+        Args:
+            text (str): The text content to chunk.
+            filepath (str): The path to the file, used to determine file type.
+            max_tokens (int): Maximum number of tokens per chunk (default: 8000).
+            model (str): The tokenizer model to use (default: "text-embedding-ada-002").
+
+        Returns:
+            list: A list of text chunks, each within the token limit.
+        """
         encoding = tiktoken.encoding_for_model(model)
         if filepath.endswith('.py'):
             try:
@@ -76,8 +109,10 @@ class codebaseIndex:
                         if len(tokens) <= max_tokens:
                             chunks.append(node_text)
                         else:
+                            # Split large nodes into smaller chunks
                             chunks.extend(
                                 [encoding.decode(tokens[i:i + max_tokens]) for i in range(0, len(tokens), max_tokens)])
+                # Add module-level code (outside functions/classes)
                 module_text = '\n'.join(line for line in text.splitlines() if
                                         not line.strip().startswith('def') and not line.strip().startswith('class'))
                 tokens = encoding.encode(module_text)
@@ -85,15 +120,36 @@ class codebaseIndex:
                 return chunks
             except SyntaxError:
                 pass
+        # Fallback to token-based chunking for non-Python or invalid Python files
         tokens = encoding.encode(text)
         return [encoding.decode(tokens[i:i + max_tokens]) for i in range(0, len(tokens), max_tokens)]
 
     @staticmethod
     def get_embedding(text, model="text-embedding-ada-002"):
+        """
+        Generate an embedding for the given text using the OpenAI API.
+
+        Args:
+            text (str): The text to embed.
+            model (str): The embedding model to use (default: "text-embedding-ada-002").
+
+        Returns:
+            list: The embedding vector as a list of floats.
+        """
         response = openai.embeddings.create(model=model, input=text)
         return response.data[0].embedding
 
     def search_codebase(self, query, top_k=5):
+        """
+        Search the indexed codebase for chunks most similar to the query.
+
+        Args:
+            query (str): The query text to search for.
+            top_k (int): Number of top results to return (default: 5).
+
+        Returns:
+            list: A list of tuples, each containing (filepath, chunk, distance) for the top_k matches.
+        """
         query_embedding = self.get_embedding(query)
         query_embedding_array = np.array([query_embedding])
         distances, indices = self.index.search(query_embedding_array, top_k)
@@ -101,6 +157,12 @@ class codebaseIndex:
         return results
 
     def save_index(self):
+        """
+        Save the FAISS index and associated metadata to disk.
+
+        Saves the index to 'codebase_index.faiss' and metadata (directory, filepaths, chunks, file_mtimes)
+        to 'codebase_metadata.json'.
+        """
         faiss.write_index(self.index, self.index_filepath)
         metadata = {
             "directory": self.directory,
@@ -112,7 +174,12 @@ class codebaseIndex:
             json.dump(metadata, f)
 
     def get_current_files_mtimes(self):
-        """Get the current modification times of files in the directory."""
+        """
+        Get the current modification times of files in the directory.
+
+        Returns:
+            dict: A dictionary mapping file paths to their modification times.
+        """
         current_file_mtimes = {}
         for root, dirs, files in os.walk(self.directory):
             dirs[:] = [d for d in dirs if d not in ['.venv', '.git', '__pycache__']]
@@ -125,7 +192,12 @@ class codebaseIndex:
         return current_file_mtimes
 
     def load_index(self):
-        """Load the index if it exists and the codebase hasn’t changed."""
+        """
+        Load the FAISS index and metadata from disk if they exist and the codebase hasn’t changed.
+
+        Returns:
+            bool: True if the index was loaded successfully, False otherwise (e.g., if files changed).
+        """
         if os.path.exists(self.index_filepath) and os.path.exists(self.metadata_filepath):
             with open(self.metadata_filepath, "r") as f:
                 metadata = json.load(f)

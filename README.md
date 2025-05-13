@@ -24,7 +24,7 @@ To get started, follow these steps:
 
 Run the Application:
 
-`python Main.py --directory /path/to/your/codebase`
+` streamlit run main.py -- --directory /path/to/your/codebase`
 
 Replace /path/to/your/codebase with the path to the directory containing your codebase.
 
